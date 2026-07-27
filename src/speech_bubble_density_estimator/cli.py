@@ -14,9 +14,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("input", type=Path)
     parser.add_argument("--format", choices=("markdown", "json"), default="markdown")
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--block-size", type=int)
+    parser.add_argument("--margin-percent", type=float, default=0)
+    parser.add_argument("--art-threshold", type=float, default=0.08)
+    parser.add_argument("--dialogue-threshold", type=float, default=0.22)
+    parser.add_argument("--smoothing-window", type=int, default=3)
     args = parser.parse_args(argv)
     try:
-        report = scan(args.input)
+        report = scan(
+            args.input,
+            block_size=args.block_size,
+            margin_percent=args.margin_percent,
+            art_threshold=args.art_threshold,
+            dialogue_threshold=args.dialogue_threshold,
+            smoothing_window=args.smoothing_window,
+        )
         rendered = (
             json.dumps(report, indent=2, ensure_ascii=False) + "\n"
             if args.format == "json"

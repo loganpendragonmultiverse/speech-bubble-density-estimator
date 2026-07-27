@@ -42,6 +42,9 @@ def test_directory_and_archive_scan(tmp_path: Path) -> None:
     assert report["page_count"] == 1
     assert report["error_count"] == 1
     assert "Decode errors" in render_markdown(report)
+    assert report["version"] == 2
+    assert report["statistics"]["median_density"] >= 0
+    assert report["most_dialogue_heavy"] == ["001.png"]
     archive = tmp_path / "issue.cbz"
     with zipfile.ZipFile(archive, "w") as handle:
         handle.writestr("001.png", image_bytes(False))
@@ -60,6 +63,26 @@ def test_validation(tmp_path: Path) -> None:
         handle.writestr("../001.png", image_bytes())
     with pytest.raises(ValueError, match="unsafe"):
         scan(unsafe)
+    with pytest.raises(ValueError, match="smoothing"):
+        scan(empty, smoothing_window=0)
+
+
+def test_configurable_analysis() -> None:
+    result = analyze_image(
+        "dialogue.png",
+        image_bytes(),
+        block_size=10,
+        margin_percent=5,
+        art_threshold=0.01,
+        dialogue_threshold=0.1,
+    )
+    assert result["classification"] == "dialogue-heavy"
+    with pytest.raises(ValueError, match="block size"):
+        analyze_image("x.png", image_bytes(), block_size=2)
+    with pytest.raises(ValueError, match="margin"):
+        analyze_image("x.png", image_bytes(), margin_percent=50)
+    with pytest.raises(ValueError, match="thresholds"):
+        analyze_image("x.png", image_bytes(), art_threshold=0.5, dialogue_threshold=0.2)
 
 
 def test_cli_json_and_safe_output(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
