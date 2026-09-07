@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import io
 import statistics
 import zipfile
@@ -31,6 +32,7 @@ def analyze_image(
     margin_percent: float = 0,
     art_threshold: float = 0.08,
     dialogue_threshold: float = 0.22,
+    preview: bool = False,
 ) -> dict[str, Any]:
     if block_size is not None and block_size < 8:
         raise ValueError("block size must be at least 8 pixels")
@@ -42,6 +44,7 @@ def analyze_image(
         image = source.convert("L")
         image.thumbnail((1600, 1600))
         width, height = image.size
+        full_width, full_height = width, height
         if width < 8 or height < 8:
             raise ValueError(f"image is too small to analyze: {name}")
         margin_x = round(width * margin_percent / 100)
@@ -50,6 +53,7 @@ def analyze_image(
         width, height = image.size
         block = block_size or max(8, min(width, height) // 20)
         candidates = 0
+        regions = []
         total = 0
         for top in range(0, height, block):
             for left in range(0, width, block):
@@ -62,8 +66,16 @@ def analyze_image(
                 dark = sum(value <= 80 for value in values) / len(values)
                 if light >= 0.55 and dark >= 0.03:
                     candidates += 1
+                    regions.append(
+                        [
+                            (left + margin_x) / full_width,
+                            (top + margin_y) / full_height,
+                            min(block, width - left) / full_width,
+                            min(block, height - top) / full_height,
+                        ]
+                    )
         score = round(candidates / total if total else 0, 4)
-        return {
+        result = {
             "name": name,
             "width": source.width,
             "height": source.height,
@@ -71,7 +83,15 @@ def analyze_image(
             "total_blocks": total,
             "density": score,
             "classification": _classify(score, art_threshold, dialogue_threshold),
+            "candidate_regions": regions,
         }
+        if preview:
+            thumbnail = source.convert("RGB")
+            thumbnail.thumbnail((360, 500))
+            output = io.BytesIO()
+            thumbnail.save(output, format="JPEG", quality=80)
+            result["thumbnail"] = base64.b64encode(output.getvalue()).decode("ascii")
+        return result
 
 
 def _directory_pages(path: Path) -> Iterable[tuple[str, bytes]]:
@@ -108,6 +128,7 @@ def scan(
     art_threshold: float = 0.08,
     dialogue_threshold: float = 0.22,
     smoothing_window: int = 3,
+    preview: bool = False,
 ) -> dict[str, Any]:
     if smoothing_window < 1:
         raise ValueError("smoothing window must be positive")
@@ -131,6 +152,7 @@ def scan(
                     margin_percent=margin_percent,
                     art_threshold=art_threshold,
                     dialogue_threshold=dialogue_threshold,
+                    preview=preview,
                 )
             )
         except (OSError, ValueError, UnidentifiedImageError) as exc:

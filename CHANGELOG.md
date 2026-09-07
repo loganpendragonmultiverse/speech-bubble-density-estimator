@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.0 - 2026-09-07
+
+- Add local contact sheets with candidate-block overlays, named calibration profiles and locally labeled evaluation summaries.
+- Added regression coverage for the audited behavior and invalid inputs.
+
 ## 1.1.0 - 2026-07-27
 
 - Added configurable block size, margin exclusion, and density thresholds.
