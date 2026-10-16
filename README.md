@@ -30,3 +30,9 @@ bubble-density ./pages --profile wide-margins --format html --output contact-she
 ```
 
 HTML embeds local thumbnails and normalized candidate-block rectangles, showing why white artwork, borders or captions can produce false positives. Built-in profiles are default and wide-margins; --profiles reads a local name-to-settings JSON object and --profile selects one. Explicit CLI settings override profile settings. --labels accepts a page-name-to-class JSON object using art-heavy/balanced/dialogue-heavy, and reports disagreements, error rate and unlabeled counts. This measures agreement with your local labels, not an independent benchmark or actual speech-bubble recognition. No OCR, upload, model training or source-image modification is performed.
+
+## 1.3.0 - 2026-10-16
+
+`bubble-density ./pages --page-order natural --format json` selects reproducible natural filename order. `--page-order lexical` sorts exact relative path strings. Both explicit policies use normalized forward-slash relative paths and produce the same sequence for a directory and CBZ regardless of ZIP insertion order. Natural order compares ASCII digit runs as integers and text with Unicode case folding, then breaks equal keys by the exact original relative path (so `a02` precedes `a2`). Nested paths are included in the comparison. This is filename order, not inferred reading order.
+
+The default `legacy` policy preserves sorted directory paths and ZIP insertion order. Reports identify the selected policy. Ordering affects sequence smoothing and presentation; individual page density and classifications are unchanged. Existing archive path, duplicate, entry-count and uncompressed-size safeguards remain. No OCR or model capabilities were added.

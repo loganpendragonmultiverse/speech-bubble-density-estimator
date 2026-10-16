@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.0 - 2026-10-16
+
+- Added explicit natural and lexical page-order policies with deterministic relative-path tie breaks and directory/CBZ parity.
+- Preserved legacy ordering, per-page classification and archive safeguards; identified ordering in all report formats.
+
 ## 1.2.0 - 2026-09-07
 
 - Add local contact sheets with candidate-block overlays, named calibration profiles and locally labeled evaluation summaries.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import io
+import re
 import statistics
 import zipfile
 from collections import Counter
@@ -94,19 +95,41 @@ def analyze_image(
         return result
 
 
-def _directory_pages(path: Path) -> Iterable[tuple[str, bytes]]:
-    for page in sorted(path.rglob("*")):
+def _page_key(name: str, policy: str) -> tuple[Any, ...]:
+    if policy == "lexical":
+        return (name,)
+    parts = tuple(
+        (1, int(part)) if part.isascii() and part.isdigit() else (0, part.casefold())
+        for part in re.split(r"([0-9]+)", name)
+    )
+    return (parts, name)
+
+
+def _directory_pages(path: Path, policy: str = "legacy") -> Iterable[tuple[str, bytes]]:
+    entries = path.rglob("*")
+    ordered = (
+        sorted(entries)
+        if policy == "legacy"
+        else sorted(entries, key=lambda page: _page_key(page.relative_to(path).as_posix(), policy))
+    )
+    for page in ordered:
         if page.is_file() and not page.is_symlink() and page.suffix.casefold() in EXTENSIONS:
             yield page.relative_to(path).as_posix(), page.read_bytes()
 
 
-def _archive_pages(path: Path) -> Iterable[tuple[str, bytes]]:
+def _archive_pages(path: Path, policy: str = "legacy") -> Iterable[tuple[str, bytes]]:
     with zipfile.ZipFile(path, "r") as archive:
         infos = archive.infolist()
         if len(infos) > MAX_ENTRIES:
             raise ValueError("archive exceeds the entry limit")
         if sum(info.file_size for info in infos) > MAX_UNCOMPRESSED:
             raise ValueError("archive exceeds the uncompressed-size limit")
+        if policy != "legacy":
+            infos.sort(
+                key=lambda info: _page_key(
+                    PurePosixPath(info.filename.replace("\\", "/")).as_posix(), policy
+                )
+            )
         seen: set[str] = set()
         for info in infos:
             member = PurePosixPath(info.filename.replace("\\", "/"))
@@ -128,15 +151,18 @@ def scan(
     art_threshold: float = 0.08,
     dialogue_threshold: float = 0.22,
     smoothing_window: int = 3,
+    page_order: str = "legacy",
     preview: bool = False,
 ) -> dict[str, Any]:
+    if page_order not in {"legacy", "lexical", "natural"}:
+        raise ValueError("page order must be legacy, lexical, or natural")
     if smoothing_window < 1:
         raise ValueError("smoothing window must be positive")
     if path.is_dir():
-        pages = _directory_pages(path)
+        pages = _directory_pages(path, page_order)
         source_type = "directory"
     elif path.is_file() and path.suffix.casefold() in {".cbz", ".zip"}:
-        pages = _archive_pages(path)
+        pages = _archive_pages(path, page_order)
         source_type = "cbz"
     else:
         raise ValueError("input must be an image directory or CBZ/ZIP archive")
@@ -195,6 +221,7 @@ def scan(
             "art_threshold": art_threshold,
             "dialogue_threshold": dialogue_threshold,
             "smoothing_window": smoothing_window,
+            "page_order": page_order,
         },
         "pages": results,
         "errors": errors,
@@ -206,6 +233,8 @@ def render_markdown(report: dict[str, Any]) -> str:
         "# Speech-Bubble Density Estimate",
         "",
         f"Pages analyzed: **{report['page_count']}** · Decode errors: **{report['error_count']}**",
+        "",
+        f"Page order: **{report['settings']['page_order']}**",
         "",
         f"Median density: **{report['statistics']['median_density']:.1%}**",
         "",

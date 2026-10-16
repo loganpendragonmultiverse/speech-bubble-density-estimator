@@ -14,6 +14,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Estimate dialogue-density review regions.")
     parser.add_argument("input", type=Path)
     parser.add_argument("--format", choices=("markdown", "json", "html"), default="markdown")
+    parser.add_argument("--page-order", choices=("legacy", "lexical", "natural"), default="legacy")
     parser.add_argument("--profile", default="default")
     parser.add_argument("--profiles", type=Path)
     parser.add_argument("--labels", type=Path)
@@ -38,7 +39,9 @@ def main(argv: list[str] | None = None) -> int:
         ):
             if getattr(args, key) is not None:
                 settings[key] = getattr(args, key)
-        report = scan(args.input, preview=args.format == "html", **settings)
+        report = scan(
+            args.input, page_order=args.page_order, preview=args.format == "html", **settings
+        )
         report["profile"] = args.profile
         if args.labels:
             report["evaluation"] = evaluate(
