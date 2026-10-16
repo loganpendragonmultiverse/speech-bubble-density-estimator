@@ -95,6 +95,8 @@ def render_html(report: dict[str, Any]) -> str:
         "<h1>Density contact sheet</h1><p>Red rectangles mark light/dark candidate blocks. White artwork and captions can produce false positives; this is a density heuristic.</p>",
         "<p>Profile: " + html.escape(report.get("profile", "explicit settings")) + "</p>",
     ]
+    if "settings" in report:
+        parts.append("<p>Page order: " + html.escape(report["settings"]["page_order"]) + "</p>")
     if "evaluation" in report:
         parts.append(
             "<h2>Local labeled evaluation</h2><pre>"
