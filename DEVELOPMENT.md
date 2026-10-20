@@ -43,3 +43,16 @@ speech recognition, remote upload or new accuracy benchmark.
 Both packages install the four authority documents plus examples/README.md, profiles.json and illustrative labels.json under share/doc/speech-bubble-density-estimator. Adapt the labels to your own page names and manual assessments.
 
 Supported image metadata is inspected explicitly; inaccessible entries refuse the scan rather than silently producing a completed subset. Browser acceptance includes long unbroken decode-error names at desktop and narrow widths.
+
+## 2.0.0 compatibility change
+
+Python 3.11 or newer is required. Pillow 13.0.0 supplies the upstream security
+fixes and no longer supports Python 3.10; this project requires Pillow>=13.0.0,<14
+for image processing. Python 3.10 users must upgrade their interpreter before
+installing this supported release. Previous published releases remain unchanged
+and are not represented as receiving these dependency fixes.
+
+The six full native CI cells use Ubuntu, Windows and macOS with Python 3.11 and
+3.14. All existing tests/assertions and the 90% coverage threshold remain, along
+with formatting, lint, strict typing, dependency audit, builds and CodeQL.
+No test skips, advisory waivers or repurposed Python 3.10 job names are introduced.
