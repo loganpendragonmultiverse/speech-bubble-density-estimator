@@ -17,7 +17,7 @@ PNG, JPEG, WebP, BMP, TIFF, and GIF pages are supported. Reports include image d
 
 Version 1.1 adds configurable art/dialogue thresholds, optional page-margin exclusion, median and quartile statistics, ranked art-heavy/dialogue-heavy page lists, and a rolling density value that makes dialogue-heavy stretches easier to review. Use `--art-threshold` and `--dialogue-threshold` to calibrate a specific visual style.
 
-This is a visual heuristic, not speech-bubble detection or accessibility certification. White artwork, captions, sound effects, dark balloons, unusual lettering, low contrast, color choices, and scanned paper can change the score. It does not recognize words, speakers, languages, panels, or reading order. Requires Python 3.10 or newer.
+This is a visual heuristic, not speech-bubble detection or accessibility certification. White artwork, captions, sound effects, dark balloons, unusual lettering, low contrast, color choices, and scanned paper can change the score. It does not recognize words, speakers, languages, panels, or reading order. Requires Python 3.11 or newer.
 
 Part of the [Logan Pendragon Forge open-source collection](https://www.loganpendragonforge.com/open-source/). Licensed under the [MIT License](LICENSE).
 
@@ -64,3 +64,16 @@ speech recognition, remote upload or new accuracy benchmark.
 Both packages install the four authority documents plus examples/README.md, profiles.json and illustrative labels.json under share/doc/speech-bubble-density-estimator. Adapt the labels to your own page names and manual assessments.
 
 Supported image metadata is inspected explicitly; inaccessible entries refuse the scan rather than silently producing a completed subset. Browser acceptance includes long unbroken decode-error names at desktop and narrow widths.
+
+## 2.0.0 compatibility change
+
+Python 3.11 or newer is required. Pillow 13.0.0 supplies the upstream security
+fixes and no longer supports Python 3.10; this project requires Pillow>=13.0.0,<14
+for image processing. Python 3.10 users must upgrade their interpreter before
+installing this supported release. Previous published releases remain unchanged
+and are not represented as receiving these dependency fixes.
+
+The six full native CI cells use Ubuntu, Windows and macOS with Python 3.11 and
+3.14. All existing tests/assertions and the 90% coverage threshold remain, along
+with formatting, lint, strict typing, dependency audit, builds and CodeQL.
+No test skips, advisory waivers or repurposed Python 3.10 job names are introduced.
