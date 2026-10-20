@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import base64
+import html
 import io
+import lzma
+import os
 import re
+import stat
 import statistics
 import zipfile
+import zlib
 from collections import Counter
 from collections.abc import Iterable
 from pathlib import Path, PurePosixPath
@@ -13,6 +18,8 @@ from typing import Any
 from PIL import Image, UnidentifiedImageError
 
 EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff", ".gif"}
+MAX_PAGE_BYTES = 100 * 1024 * 1024
+MAX_PIXELS = 40_000_000
 MAX_ENTRIES = 5_000
 MAX_UNCOMPRESSED = 1024 * 1024 * 1024
 
@@ -25,6 +32,27 @@ def _classify(score: float, art_threshold: float = 0.08, dialogue_threshold: flo
     return "dialogue-heavy"
 
 
+def _validate_settings(
+    block_size: int | None, margin_percent: float, art_threshold: float, dialogue_threshold: float
+) -> None:
+    if block_size is not None and (type(block_size) is not int or block_size < 8):
+        raise ValueError("block size must be an integer of at least 8 pixels")
+    if (
+        isinstance(margin_percent, bool)
+        or not isinstance(margin_percent, (int, float))
+        or not 0 <= margin_percent < 40
+    ):
+        raise ValueError("margin percent must be a finite number between 0 and 40")
+    if (
+        any(
+            isinstance(value, bool) or not isinstance(value, (int, float))
+            for value in (art_threshold, dialogue_threshold)
+        )
+        or not 0 <= art_threshold < dialogue_threshold <= 1
+    ):
+        raise ValueError("thresholds must satisfy finite numbers 0 <= art < dialogue <= 1")
+
+
 def analyze_image(
     name: str,
     content: bytes,
@@ -35,13 +63,12 @@ def analyze_image(
     dialogue_threshold: float = 0.22,
     preview: bool = False,
 ) -> dict[str, Any]:
-    if block_size is not None and block_size < 8:
-        raise ValueError("block size must be at least 8 pixels")
-    if not 0 <= margin_percent < 40:
-        raise ValueError("margin percent must be between 0 and 40")
-    if not 0 <= art_threshold < dialogue_threshold <= 1:
-        raise ValueError("thresholds must satisfy 0 <= art < dialogue <= 1")
+    _validate_settings(block_size, margin_percent, art_threshold, dialogue_threshold)
+    if len(content) > MAX_PAGE_BYTES:
+        raise ValueError("image exceeds the 100 MiB input limit")
     with Image.open(io.BytesIO(content)) as source:
+        if source.width * source.height > MAX_PIXELS:
+            raise ValueError("image exceeds the 40 million pixel limit")
         image = source.convert("L")
         image.thumbnail((1600, 1600))
         width, height = image.size
@@ -106,41 +133,79 @@ def _page_key(name: str, policy: str) -> tuple[Any, ...]:
 
 
 def _directory_pages(path: Path, policy: str = "legacy") -> Iterable[tuple[str, bytes]]:
-    entries = path.rglob("*")
+    def failed(error: OSError) -> None:
+        raise ValueError(f"Cannot read image directory: {error}") from error
+
+    entries = [
+        Path(directory) / name
+        for directory, _dirs, files in os.walk(path, onerror=failed)
+        for name in files
+    ]
     ordered = (
         sorted(entries)
         if policy == "legacy"
         else sorted(entries, key=lambda page: _page_key(page.relative_to(path).as_posix(), policy))
     )
     for page in ordered:
-        if page.is_file() and not page.is_symlink() and page.suffix.casefold() in EXTENSIONS:
-            yield page.relative_to(path).as_posix(), page.read_bytes()
+        if page.suffix.casefold() in EXTENSIONS:
+            metadata = page.lstat()
+            if not stat.S_ISREG(metadata.st_mode):
+                continue
+            if metadata.st_size > MAX_PAGE_BYTES:
+                raise ValueError(f"image exceeds the 100 MiB input limit: {page.name}")
+            with page.open("rb") as handle:
+                content = handle.read(MAX_PAGE_BYTES + 1)
+            if len(content) > MAX_PAGE_BYTES:
+                raise ValueError(f"image exceeds the 100 MiB input limit: {page.name}")
+            yield page.relative_to(path).as_posix(), content
 
 
 def _archive_pages(path: Path, policy: str = "legacy") -> Iterable[tuple[str, bytes]]:
-    with zipfile.ZipFile(path, "r") as archive:
-        infos = archive.infolist()
-        if len(infos) > MAX_ENTRIES:
-            raise ValueError("archive exceeds the entry limit")
-        if sum(info.file_size for info in infos) > MAX_UNCOMPRESSED:
-            raise ValueError("archive exceeds the uncompressed-size limit")
-        if policy != "legacy":
-            infos.sort(
-                key=lambda info: _page_key(
-                    PurePosixPath(info.filename.replace("\\", "/")).as_posix(), policy
+    try:
+        with zipfile.ZipFile(path, "r") as archive:
+            infos = archive.infolist()
+            if len(infos) > MAX_ENTRIES:
+                raise ValueError("archive exceeds the entry limit")
+            if sum(info.file_size for info in infos) > MAX_UNCOMPRESSED:
+                raise ValueError("archive exceeds the uncompressed-size limit")
+            if policy != "legacy":
+                infos.sort(
+                    key=lambda info: _page_key(
+                        PurePosixPath(info.filename.replace(chr(92), "/")).as_posix(), policy
+                    )
                 )
-            )
-        seen: set[str] = set()
-        for info in infos:
-            member = PurePosixPath(info.filename.replace("\\", "/"))
-            if member.is_absolute() or ".." in member.parts:
-                raise ValueError(f"unsafe archive member path: {info.filename}")
-            key = member.as_posix().casefold()
-            if key in seen:
-                raise ValueError(f"duplicate archive member path: {info.filename}")
-            seen.add(key)
-            if not info.is_dir() and member.suffix.casefold() in EXTENSIONS:
-                yield member.as_posix(), archive.read(info)
+            seen: set[str] = set()
+            for info in infos:
+                member = PurePosixPath(info.filename.replace(chr(92), "/"))
+                if (
+                    member.is_absolute()
+                    or ".." in member.parts
+                    or re.match(r"^[A-Za-z]:", member.as_posix())
+                ):
+                    raise ValueError(f"unsafe archive member path: {info.filename}")
+                key = member.as_posix().casefold()
+                if key in seen:
+                    raise ValueError(f"duplicate archive member path: {info.filename}")
+                seen.add(key)
+                if not info.is_dir() and member.suffix.casefold() in EXTENSIONS:
+                    if info.file_size > MAX_PAGE_BYTES:
+                        raise ValueError(f"image exceeds the 100 MiB input limit: {info.filename}")
+                    with archive.open(info) as handle:
+                        content = handle.read(MAX_PAGE_BYTES + 1)
+                    if len(content) > MAX_PAGE_BYTES:
+                        raise ValueError(f"image exceeds the 100 MiB input limit: {info.filename}")
+                    yield member.as_posix(), content
+    except (
+        OSError,
+        EOFError,
+        RuntimeError,
+        NotImplementedError,
+        UnicodeError,
+        zipfile.BadZipFile,
+        zlib.error,
+        lzma.LZMAError,
+    ) as exc:
+        raise ValueError(f"Cannot decode CBZ/ZIP archive: {exc}") from exc
 
 
 def scan(
@@ -156,7 +221,8 @@ def scan(
 ) -> dict[str, Any]:
     if page_order not in {"legacy", "lexical", "natural"}:
         raise ValueError("page order must be legacy, lexical, or natural")
-    if smoothing_window < 1:
+    _validate_settings(block_size, margin_percent, art_threshold, dialogue_threshold)
+    if type(smoothing_window) is not int or smoothing_window < 1:
         raise ValueError("smoothing window must be positive")
     if path.is_dir():
         pages = _directory_pages(path, page_order)
@@ -181,7 +247,7 @@ def scan(
                     preview=preview,
                 )
             )
-        except (OSError, ValueError, UnidentifiedImageError) as exc:
+        except (OSError, ValueError, UnidentifiedImageError, Image.DecompressionBombError) as exc:
             errors.append({"name": name, "error": str(exc)})
     if not results:
         raise ValueError("no decodable supported page images found")
@@ -228,6 +294,16 @@ def scan(
     }
 
 
+def _literal(value: str) -> str:
+    return (
+        html.escape(value, quote=False)
+        .replace("|", "&#124;")
+        .replace(chr(96), "&#96;")
+        .replace(chr(13), "&#13;")
+        .replace(chr(10), "&#10;")
+    )
+
+
 def render_markdown(report: dict[str, Any]) -> str:
     lines = [
         "# Speech-Bubble Density Estimate",
@@ -242,10 +318,12 @@ def render_markdown(report: dict[str, Any]) -> str:
         "|---|---:|---:|---|",
     ]
     lines.extend(
-        f"| `{page['name']}` | {page['density']:.1%} | {page['smoothed_density']:.1%} | {page['classification']} |"
+        f"| {_literal(page['name'])} | {page['density']:.1%} | {page['smoothed_density']:.1%} | {page['classification']} |"
         for page in report["pages"]
     )
     if report["errors"]:
         lines.extend(["", "## Decode errors", ""])
-        lines.extend(f"- `{item['name']}` — {item['error']}" for item in report["errors"])
+        lines.extend(
+            f"- {_literal(item['name'])} — {_literal(item['error'])}" for item in report["errors"]
+        )
     return "\n".join(lines).rstrip() + "\n"

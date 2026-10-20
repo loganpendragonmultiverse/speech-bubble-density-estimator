@@ -31,6 +31,13 @@ SETTINGS = {
 CLASSES = {"art-heavy", "balanced", "dialogue-heavy"}
 
 
+def _finite(value: float) -> bool:
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
 def profile_settings(name: str, payload: Any = None) -> dict[str, Any]:
     profiles = PROFILES if payload is None else payload
     if (
@@ -44,9 +51,7 @@ def profile_settings(name: str, payload: Any = None) -> dict[str, Any]:
         raise ValueError("Unknown calibration profile setting")
     for key, value in settings.items():
         if value is not None and (
-            isinstance(value, bool)
-            or not isinstance(value, (int, float))
-            or not math.isfinite(value)
+            isinstance(value, bool) or not isinstance(value, (int, float)) or not _finite(value)
         ):
             raise ValueError(f"Profile {key} must be a finite number")
         if (
@@ -91,7 +96,7 @@ def evaluate(report: dict[str, Any], labels: Any) -> dict[str, Any]:
 def render_html(report: dict[str, Any]) -> str:
     parts = [
         '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Density contact sheet</title>',
-        "<style>body{font:17px system-ui;max-width:1150px;margin:auto;padding:22px;background:#f5f1e8;color:#203442}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:20px}article{background:white;padding:16px;border:1px solid #abc;border-radius:12px;overflow-wrap:anywhere}.page{position:relative}.page img{width:100%;display:block}.page svg{position:absolute;inset:0;width:100%;height:100%}pre{white-space:pre-wrap;overflow-wrap:anywhere}</style>",
+        "<style>body{overflow-wrap:anywhere;font:17px system-ui;max-width:1150px;margin:auto;padding:22px;background:#f5f1e8;color:#203442}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:20px}article{background:white;padding:16px;border:1px solid #abc;border-radius:12px;overflow-wrap:anywhere}.page{position:relative}.page img{width:100%;display:block}.page svg{position:absolute;inset:0;width:100%;height:100%}pre{white-space:pre-wrap;overflow-wrap:anywhere}</style>",
         "<h1>Density contact sheet</h1><p>Red rectangles mark light/dark candidate blocks. White artwork and captions can produce false positives; this is a density heuristic.</p>",
         "<p>Profile: " + html.escape(report.get("profile", "explicit settings")) + "</p>",
     ]
@@ -103,6 +108,16 @@ def render_html(report: dict[str, Any]) -> str:
             + html.escape(json.dumps(report["evaluation"], indent=2))
             + "</pre>"
         )
+    parts.append(
+        f"<p>Analyzed pages: {report.get('page_count', len(report['pages']))}; decode errors: {report.get('error_count', len(report.get('errors', [])))}.</p>"
+    )
+    if report.get("errors"):
+        parts.append("<section><h2>Decode errors — partial analysis</h2><ul>")
+        for error in report["errors"]:
+            parts.append(
+                "<li>" + html.escape(error["name"]) + ": " + html.escape(error["error"]) + "</li>"
+            )
+        parts.append("</ul></section>")
     parts.append('<main class="grid">')
     for index, page in enumerate(report["pages"]):
         parts.append(

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.1 — 2026-10-20
+
+- Bound per-page input bytes and decoded pixels before full image conversion.
+- Validate typed settings before scanning and normalize archive/codec errors.
+- Show partial decode evidence in HTML and render literal Markdown filenames/errors.
+- Create report files exclusively, preserving linked or concurrent destinations.
+- Install documented local profile/label examples alongside all four authority documents.
+
 ## 1.3.0 - 2026-10-16
 
 - Added explicit natural and lexical page-order policies with deterministic relative-path tie breaks and directory/CBZ parity.
