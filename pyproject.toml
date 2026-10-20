@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "speech-bubble-density-estimator"
-version = "1.3.0"
+version = "1.3.1"
 description = "Estimate dialogue-heavy comic pages from local image contrast patterns without OCR."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -38,3 +38,5 @@ addopts = "--cov=speech_bubble_density_estimator --cov-branch --cov-report=term-
 
 [tool.setuptools.data-files]
 "share/doc/speech-bubble-density-estimator" = ["README.md", "CHANGELOG.md", "DEVELOPMENT.md", "TESTING.md"]
+
+"share/doc/speech-bubble-density-estimator/examples" = ["examples/README.md", "examples/profiles.json", "examples/labels.json"]

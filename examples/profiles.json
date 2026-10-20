@@ -1,0 +1,9 @@
+{
+  "review": {
+    "block_size": 16,
+    "margin_percent": 5,
+    "art_threshold": 0.08,
+    "dialogue_threshold": 0.22,
+    "smoothing_window": 3
+  }
+}
